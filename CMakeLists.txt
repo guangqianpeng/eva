@@ -16,8 +16,8 @@ set(CXX_FLAGS
         -Woverloaded-virtual
         -Wpointer-arith
         -Wshadow
-        -Wwrite-strings
         -std=c++11
+        -Wwrite-strings
         -march=native
         -rdynamic)
 string(REPLACE ";" " " CMAKE_CXX_FLAGS "${CXX_FLAGS}")
