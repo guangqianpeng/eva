@@ -58,9 +58,9 @@ int main(int argc, char** argv)
             if (it == flowMap.end())
             {
                 if (unit.isSYN() || unit.dataLength > 0) {
-                    auto analyzer = new Analyzer(dataUnit);
+                    std::unique_ptr<Analyzer> analyzer(new Analyzer(dataUnit));
                     analyzer->onDataUnit(dataUnit);
-                    flowMap.emplace(unit, analyzer);
+                    flowMap.emplace(unit, std::move(analyzer));
                 }
             }
             else if (unit.dataLength > 0 || unit.isSYN())
