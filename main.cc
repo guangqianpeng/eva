@@ -3,10 +3,6 @@
 
 int main()
 {
-    std::string x("asdf");
-    muduo::net::InetAddress addr;
-    addr.toIpPort();
-
 //    eva::Logger::setLogLevel(eva::Logger::DEBUG);
 
     char errbuf[PCAP_ERRBUF_SIZE];
