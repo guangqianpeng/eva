@@ -67,8 +67,7 @@ int main(int argc, char** argv)
             {
                 it->second->onDataUnit(dataUnit);
             }
-
-            if (unit.isFIN() || unit.isRST())
+            else if (unit.isFIN() || unit.isRST())
             {
                 delete it->second;
                 flowMap.erase(it);

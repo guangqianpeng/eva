@@ -245,3 +245,10 @@ output format:
 
 - real-time fine-grained TCP diagnosis with 7 kinds of results/limitations
 - applies to any CC
+
+## Q&A
+
+- Q: Why packet, ack in round trip duration? what if too long/no pair? should also consider a timeout for diagnosing period? packets/acks are in series, which pair to pick?
+
+
+- A: 

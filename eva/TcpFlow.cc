@@ -228,15 +228,17 @@ void TcpFlow<Analyzer>::postHandleDataUnit(const DataUnit& dataUnit)
 template <typename Analyzer>
 void TcpFlow<Analyzer>::onAckUnit(const AckUnit& ackUnit)
 {
-    assert(ackUnit.u->srcAddress == dstAddress_);
-    assert(ackUnit.u->dstAddress == srcAddress_);
-    assert(ackUnit.u->isSYN() ||
-           ackUnit.u->isACK() ||
-           ackUnit.u->isFIN());
-    if (ackUnit.u->isSYN()) {
+    auto& u = *ackUnit.u;
+
+    assert(u.srcAddress == dstAddress_);
+    assert(u.dstAddress == srcAddress_);
+    assert(u.isSYN() ||
+           u.isACK() ||
+           u.isFIN());
+    if (u.isSYN()) {
         LOG_INFO << "[" << roundTripCount_ << "]" << " receiver SYN";
     }
-    else if (ackUnit.u->isFIN()) {
+    else if (u.isFIN()) {
         LOG_INFO << "[" << roundTripCount_ << "]" << " receiver FIN";
     }
 
@@ -249,7 +251,9 @@ void TcpFlow<Analyzer>::onAckUnit(const AckUnit& ackUnit)
 template <typename Analyzer>
 void TcpFlow<Analyzer>::preHandleAckUnit(const AckUnit& ackUnit)
 {
-    if (ackUnit.u->isSYN()) {
+    auto& u = *ackUnit.u;
+
+    if (u.isSYN()) {
         // luckily, we see the option in receiver's SYN
         seeMss_ = ackUnit.u->seeMss;
         seeWsc_ = ackUnit.u->seeWsc;
@@ -271,7 +275,7 @@ void TcpFlow<Analyzer>::preHandleAckUnit(const AckUnit& ackUnit)
     ackUnitCount_++;
 
     // update latest receiver window
-    recvWindow_ = ackUnit.u->recvWindow << wsc_;
+    recvWindow_ = u.recvWindow << wsc_;
 }
 
 template <typename Analyzer>

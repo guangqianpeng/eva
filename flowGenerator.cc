@@ -75,7 +75,7 @@ private:
 int main(int argc, char** argv)
 {
     if (argc < 4) {
-        fprintf(stderr, "Usage: server <address> <port> <threads>\n");
+        fprintf(stderr, "Usage: server <address> <port> <congestion control>\n");
         exit(1);
     }
 
