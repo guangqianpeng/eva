@@ -15,8 +15,6 @@ struct RandomHash
 {
     RandomHash()
     {
-        static_assert(N > 0);
-
         auto seed = static_cast<unsigned long>(time(nullptr));
         std::default_random_engine generator(seed);
         std::uniform_int_distribution<uint8_t> distribution;
