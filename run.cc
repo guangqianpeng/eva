@@ -37,8 +37,7 @@ int main(int argc, char** argv)
     const uint8_t* data;
     std::unordered_map<
             Unit,
-            Analyzer*,
-            HashUnit> flowMap;
+            Analyzer*> flowMap;
 
     while ((data = pcap_next(cap, &hdr)) != nullptr) {
 
