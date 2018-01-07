@@ -107,9 +107,6 @@ private:
     bool         isReceiverLimited_;
 };
 
-class Analyzer;
-extern template class TcpFlow<Analyzer>;
-
 }
 
 #endif //EVA_TCPFLOW_H
