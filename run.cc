@@ -60,7 +60,7 @@ int main(int argc, char** argv)
                 if (unit.isSYN() || unit.dataLength > 0) {
                     std::unique_ptr<Analyzer> analyzer(new Analyzer(dataUnit));
                     analyzer->onDataUnit(dataUnit);
-                    flowMap.emplace(unit, std::move(analyzer));
+                    flowMap[unit] = std::move(analyzer);
                 }
             }
             else if (unit.dataLength > 0 || unit.isSYN())
