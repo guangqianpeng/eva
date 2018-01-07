@@ -53,6 +53,14 @@ struct Unit
     bool isURG()  const { return flag & TH_URG; }
 };
 
+struct HashUnit
+{
+    size_t operator()(const eva::Unit& unit) const
+    {
+        return unit.hashCode;
+    }
+};
+
 struct DataUnit
 {
     explicit DataUnit(Unit* u_): u(u_) {}
@@ -83,20 +91,6 @@ bool unpack(struct pcap_pkthdr* pkthdr,
             int linkType,
             Unit* u,
             bool printfError = false);
-
-}
-
-namespace std
-{
-
-// custom specialization of std::hash can be injected in namespace std
-template<> struct hash<eva::Unit>
-{
-    size_t operator()(const eva::Unit& unit) const
-    {
-        return unit.hashCode;
-    }
-};
 
 }
 
