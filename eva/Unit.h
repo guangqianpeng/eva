@@ -51,6 +51,8 @@ struct Unit
     bool isPSH()  const { return flag & TH_PUSH; }
     bool isACK()  const { return flag & TH_ACK; }
     bool isURG()  const { return flag & TH_URG; }
+
+    ~Unit(){}
 };
 
 struct HashUnit
