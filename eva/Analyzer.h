@@ -49,6 +49,8 @@ public:
             isSlowStart_(true)
     {}
 
+    ~Analyzer(){}
+
     void onRateSample(const RateSample& rs);
     void onNewRoundtrip(Timestamp when);
     void onTimeoutRxmit(Timestamp first, Timestamp rexmit);
