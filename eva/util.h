@@ -83,11 +83,10 @@ inline Sequence operator+(Sequence lhs, uint32_t offset)
     return Sequence(lhs.seq + offset);
 }
 
-inline Timestamp operator-(Timestamp lhs, Timestamp rhs)
+inline int64_t operator-(Timestamp lhs, Timestamp rhs)
 {
-    auto diff = lhs.microSecondsSinceEpoch() -
-                rhs.microSecondsSinceEpoch();
-    return Timestamp(diff);
+    return lhs.microSecondsSinceEpoch() -
+           rhs.microSecondsSinceEpoch();
 }
 
 inline muduo::string extractHours(Timestamp ts)

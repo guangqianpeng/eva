@@ -12,13 +12,16 @@ using namespace eva;
 namespace
 {
 
-const Timestamp kRtpropExpration(10 * Timestamp::kMicroSecondsPerSecond);
+const int64_t kRtpropExpration = 10 * Timestamp::kMicroSecondsPerSecond;
 
 }
 
 void Analyzer::onRateSample(const RateSample& rs)
 {
-    if (!rtprop_.valid() ||
+    assert(rs.ackReceivedTime.valid());
+    assert(rs.dataSentTime.valid());
+
+    if (rtprop_ < 0 ||
         rtprop_ > rs.rtt ||
         rs.ackReceivedTime - rtpropTimestamp_ >= kRtpropExpration)
     {
@@ -26,7 +29,7 @@ void Analyzer::onRateSample(const RateSample& rs)
         rtpropTimestamp_ = rs.ackReceivedTime;
         LOG_DEBUG << "[" << roundtripCount() << "]"
                   << " [update delay] "
-                  << rtprop_.microSecondsSinceEpoch() << "us";
+                  << rtprop_ << "us";
     }
 
     if (!firstAckTime_.valid()) {
@@ -85,14 +88,13 @@ void Analyzer::onRateSample(const RateSample& rs)
                   << rs.deliveryRate;
         votes_[BANDWIDTH_LIMITED]++;
     }
-    else if (rs.rtt.microSecondsSinceEpoch() >
-             rtprop_.microSecondsSinceEpoch() * 6 / 5) {
+    else if (rs.rtt > rtprop_ * 6 / 5) {
 
         LOG_DEBUG << "[" << roundtripCount() << "]"
                   << " [congestion limited] delay = "
-                  << rtprop_.microSecondsSinceEpoch()
+                  << rtprop_
                   << " rtt = "
-                  << rs.rtt.microSecondsSinceEpoch();
+                  << rs.rtt;
         votes_[CONGESTION_LIMITED]++;
     }
     else {
@@ -103,7 +105,7 @@ void Analyzer::onRateSample(const RateSample& rs)
 
     LOG_DEBUG << "[" << roundtripCount() << "]"
               << "delivery rate: " << rs.deliveryRate
-              << " rtt: " << rs.rtt.microSecondsSinceEpoch();
+              << " rtt: " << rs.rtt;
 }
 
 void Analyzer::onNewRoundtrip(Timestamp when)
@@ -120,7 +122,7 @@ void Analyzer::onNewRoundtrip(Timestamp when)
 
     std::cout << "[" << roundtripCount() << "]"
               << " " << bandwidthFilter_.GetBest() << "kB/s"
-              << " " << rtprop_.microSecondsSinceEpoch() << "us "
+              << " " << rtprop_ << "us "
               << extractHours(firstAckTime_) << " -> "
               << extractHours(when)
               << " ";
@@ -181,7 +183,7 @@ void Analyzer::onTimeoutRxmit(Timestamp first, Timestamp rexmit)
 {
     std::cout << "[" << roundtripCount() << "]"
               << " " << bandwidthFilter_.GetBest() << "kB/s"
-              << " " << rtprop_.microSecondsSinceEpoch() << "us "
+              << " " << rtprop_ << "us "
               << extractHours(first) << " -> "
               << extractHours(rexmit)
               << " [timeout rexmit]" << "\n";
@@ -193,7 +195,7 @@ void Analyzer::onQuitSlowStart(Timestamp when)
     slowStartQuitTime = when;
     std::cout << "[" << roundtripCount() << "]"
               << " " << bandwidthFilter_.GetBest() << "kB/s"
-              << " " << rtprop_.microSecondsSinceEpoch() << "us "
+              << " " << rtprop_ << "us "
               << extractHours(when)
               << " [quit slow start]" << "\n";
 }
@@ -213,7 +215,7 @@ Result Analyzer::countVotes()
 
 uint32_t Analyzer::bdp() const
 {
-    auto milliseconds = rtprop_.microSecondsSinceEpoch() / 1000;
+    auto milliseconds = rtprop_ / 1000;
     auto btlbw = bandwidthFilter_.GetBest();
     return static_cast<uint32_t>(milliseconds * btlbw);
 }

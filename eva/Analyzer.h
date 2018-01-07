@@ -32,7 +32,7 @@ public:
     explicit Analyzer(const DataUnit& dat):
             TcpFlow(dat),
             bandwidthFilter_(10, 0, 0),
-            rtprop_(Timestamp::invalid()),
+            rtprop_(-1),
             rtpropTimestamp_(Timestamp::invalid()),
             votes_(N_RESULT_TYPES),
             seeSmallUnit_(false),
@@ -42,7 +42,7 @@ public:
     explicit Analyzer(const AckUnit& ack):
             TcpFlow(ack),
             bandwidthFilter_(10, 0, 0),
-            rtprop_(Timestamp::invalid()),
+            rtprop_(-1),
             rtpropTimestamp_(Timestamp::invalid()),
             votes_(N_RESULT_TYPES),
             seeSmallUnit_(false),
@@ -68,7 +68,7 @@ private:
             MaxBandwidthFilter;
 
     MaxBandwidthFilter bandwidthFilter_;
-    Timestamp rtprop_;
+    int64_t   rtprop_;
     Timestamp rtpropTimestamp_;
     std::vector<int> votes_;
 

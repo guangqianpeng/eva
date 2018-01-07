@@ -12,21 +12,21 @@ namespace eva
 
 struct RateSample
 {
-    Timestamp  rtt;
+    int64_t    rtt = -1; //us
 
     Timestamp  ackReceivedTime;
     Timestamp  dataSentTime;
 
-    int64_t    deliveryRate; // B/ms = kB/s
-    Timestamp  interval;
-    uint32_t   delivered;
-    uint32_t   priorDelivered;
+    int64_t    deliveryRate = 0; // B/ms = kB/s
+    int64_t    interval = -1; //us
+    uint32_t   delivered = 0;
+    uint32_t   priorDelivered = 0;
     Timestamp  priorTime;
-    Timestamp  sendElapsed;
-    Timestamp  ackElapsed;
-    bool       isSenderLimited;
-    bool       isReceiverLimited;
-    bool       seeSmallUnit;
+    int64_t    sendElapsed = -1; //us
+    int64_t    ackElapsed = -1;  //us
+    bool       isSenderLimited = false;
+    bool       isReceiverLimited = false;
+    bool       seeSmallUnit = false;
 };
 
 }

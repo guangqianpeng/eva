@@ -6,5 +6,5 @@ add_library(eva STATIC
         hash.cc hash.h
         RateSample.h
         Analyzer.cc Analyzer.h
-        Filter.h Roundtrip.h)
+        Filter.h)
 target_link_libraries(eva muduo_net)

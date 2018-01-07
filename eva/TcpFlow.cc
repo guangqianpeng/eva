@@ -12,7 +12,7 @@ using namespace eva;
 namespace
 {
 
-const Timestamp kMinRtt(1000); // 1ms
+const int64_t   kMinRtt = 1000; // 1ms
 const uint32_t  kMinMss = 536;
 const uint32_t  kMinWsc = 0;
 const uint32_t  kMaxWsc = 7;
@@ -340,9 +340,6 @@ bool TcpFlow<Analyzer>::handleAckUnit(const AckUnit& ackUnit)
     }
 
     RateSample rs;
-    rs.priorDelivered = 0;
-    rs.priorTime = Timestamp::invalid();
-    rs.seeSmallUnit = false;
 
     // deal with accumulative acked P
     std::for_each(flow_.begin(), it, [&](P& p){
@@ -371,7 +368,7 @@ bool TcpFlow<Analyzer>::handleAckUnit(const AckUnit& ackUnit)
                  << " interval too small, drop";
     }
     else {
-        rs.deliveryRate = rs.delivered / (rs.interval.microSecondsSinceEpoch() / 1000);
+        rs.deliveryRate = rs.delivered / (rs.interval / 1000);
         convert().onRateSample(rs);
     }
     return true;
@@ -435,10 +432,10 @@ void TcpFlow<Analyzer>::updateRateSample(P& p, const AckUnit& ack, RateSample* r
         firstSentTime_ = p.sentTime;
 
         // all timestamp should be valid
-        assert(rs->rtt.valid());
+        assert(rs->rtt >= 0);
         assert(rs->priorTime.valid());
-        assert(rs->sendElapsed.valid());
-        assert(rs->ackElapsed.valid());
+        assert(rs->sendElapsed >= 0);
+        assert(rs->ackElapsed >= 0);
         assert(firstSentTime_.valid());
     }
 
