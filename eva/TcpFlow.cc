@@ -111,7 +111,7 @@ void TcpFlow<Analyzer>::preHandleDataUnit(const DataUnit& dataUnit)
 
 
     // fixme: remove magic number
-    isReceiverLimited_ = (pipeSize_ > recvWindow_ * 9 / 10 || recvWindow_ < mss_);
+    isReceiverLimited_ = (pipeSize_ > recvWindow_ * 9 / 10);
     isSenderLimited_ = (!isReceiverLimited_ &&
                         (smallUnit || pipeNotFull));
 
