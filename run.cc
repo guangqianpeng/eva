@@ -37,7 +37,7 @@ int main(int argc, char** argv)
     const uint8_t* data;
     std::unordered_map<
             Unit,
-            Analyzer*> flowMap;
+            std::unique_ptr<Analyzer>> flowMap;
 
     while ((data = pcap_next(cap, &hdr)) != nullptr) {
 
@@ -58,9 +58,9 @@ int main(int argc, char** argv)
             if (it == flowMap.end())
             {
                 if (unit.isSYN() || unit.dataLength > 0) {
-                    auto analyzer = new Analyzer(dataUnit);
+                    std::unique_ptr<Analyzer> analyzer(new Analyzer(dataUnit));
                     analyzer->onDataUnit(dataUnit);
-                    flowMap.emplace(unit, analyzer);
+                    flowMap.emplace(unit, std::move(analyzer));
                 }
             }
             else if (unit.dataLength > 0 || unit.isSYN())
