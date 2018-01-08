@@ -6,6 +6,7 @@
 #define EVA_UTIL_H
 
 #include <string>
+#include <functional>
 
 #include <muduo/net/InetAddress.h>
 #include <muduo/base/Timestamp.h>
@@ -18,6 +19,11 @@
 
 namespace eva
 {
+
+using std::placeholders::_1;
+using std::placeholders::_2;
+using std::placeholders::_3;
+using std::placeholders::_4;
 
 using muduo::net::EventLoop;
 using muduo::net::EventLoopThread;

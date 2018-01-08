@@ -12,8 +12,15 @@ public:
     BulkServer(EventLoop* loop, const InetAddress& addr):
             loop_(loop),
             addr_(addr),
-            server_(loop, addr, "bulk data transfer")
+            server_(loop, addr, "BulkServer")
     {
+        server_.setConnectionCallback(std::bind(
+                &BulkServer::onConnection, this, _1));
+        server_.setMessageCallback(std::bind(
+                &BulkServer::onMessage, this, _1, _2, _3));
+        server_.setWriteCompleteCallback(std::bind(
+                &BulkServer::onWriteComplete, this, _1));
+
         std::string line;
         for (int i = 33; i < 127; ++i)
         {
@@ -29,7 +36,7 @@ public:
 
     void start()
     {
-        LOG_INFO << "start bulk data transfer server "
+        LOG_INFO << "BulkServer at "
                  << addr_.toIpPort();
         server_.start();
     }
@@ -43,10 +50,12 @@ private:
     void onConnection(const TcpConnectionPtr& conn)
     {
         if (conn->connected()) {
-            LOG_INFO << conn->name() << "up";
+            LOG_INFO << conn->name() << " [up]";
+            conn->setCongestionControl(congestionControl_.c_str());
+            conn->send(message_);
         }
         else {
-            LOG_INFO << conn->name() << "down";
+            LOG_INFO << conn->name() << " [down]";
         }
     }
 
@@ -79,9 +88,9 @@ int main(int argc, char** argv)
         exit(1);
     }
 
-    const char* ip = argv[1];
-    uint16_t port = static_cast<uint16_t>(atoi(argv[2]));
-    const char* congestionControl = argv[3];
+    auto ip = argv[1];
+    auto port = static_cast<uint16_t>(atoi(argv[2]));
+    auto congestionControl = argv[3];
 
     EventLoop loop;
 
