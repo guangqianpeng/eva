@@ -7,6 +7,8 @@ BUILD_DIR=${BUILD_DIR:-../eva-bin}
 BUILD_TYPE=${BUILD_TYPE:-Release}
 BUILD_NO_EXAMPLES=${BUILD_NO_EXAMPLES:-1}
 
+git submodule update --init --recursive
+
 mkdir -p $BUILD_DIR \
     && cd $BUILD_DIR \
     && cmake \
