@@ -22,6 +22,7 @@ set(CXX_FLAGS
         -rdynamic)
 string(REPLACE ";" " " CMAKE_CXX_FLAGS "${CXX_FLAGS}")
 
+set(CMAKE_CXX_FLAGS_RELEASE "-O2 -finline-limit=1000 -DNDEBUG")
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
 
@@ -41,3 +42,6 @@ target_link_libraries(run eva pcap)
 
 add_executable(flow_generator flowGenerator.cc)
 target_link_libraries(flow_generator eva)
+
+add_executable(client client.cc)
+target_link_libraries(client eva)

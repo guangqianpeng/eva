@@ -16,6 +16,7 @@
 #include <muduo/net/EventLoop.h>
 #include <muduo/net/EventLoopThread.h>
 #include <muduo/net/TcpServer.h>
+#include <muduo/net/TcpClient.h>
 
 namespace eva
 {
@@ -29,6 +30,7 @@ using muduo::net::EventLoop;
 using muduo::net::EventLoopThread;
 using muduo::net::InetAddress;
 using muduo::net::TcpServer;
+using muduo::net::TcpClient;
 using muduo::net::TcpConnection;
 using muduo::net::TcpConnectionPtr;
 using muduo::net::Buffer;

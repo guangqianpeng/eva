@@ -149,6 +149,10 @@ bool TcpFlow<Analyzer>::handleDataUnit(const DataUnit& dataUnit)
                     !u.isFIN() &&
                     u.optionLength + u.dataLength < mss_;
 
+    if (u.isSYN()) {
+        nextSendSequence_ = u.dataSequence;
+    }
+
     if (nextSendSequence_ > u.dataSequence) {
 
         // sender reorder is rare, because we are at sender side
@@ -272,7 +276,9 @@ void TcpFlow<Analyzer>::preHandleAckUnit(const AckUnit& ackUnit)
         }
     }
 
-    ackUnitCount_++;
+    if (u.isACK()) {
+        ackUnitCount_++;
+    }
 
     // update latest receiver window
     recvWindow_ = u.recvWindow << wsc_;
@@ -367,12 +373,12 @@ bool TcpFlow<Analyzer>::handleAckUnit(const AckUnit& ackUnit)
     rs.delivered = delivered_ - rs.priorDelivered;
 
     if (rs.interval < kMinRtt) {
-        LOG_WARN << srcAddress_.toIpPort() << "->"
-                 << dstAddress_.toIpPort()
-                 << " interval too small, drop";
+        LOG_FATAL << srcAddress_.toIpPort() << "->"
+                  << dstAddress_.toIpPort()
+                  << " interval too small (" << rs.interval << "us)";
     }
     else {
-        rs.deliveryRate = rs.delivered / (rs.interval / 1000);
+        rs.deliveryRate = rs.delivered * 1000 * 1000 / 1024 / (rs.interval);
         convert().onRateSample(rs);
     }
     return true;

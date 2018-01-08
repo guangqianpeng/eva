@@ -2,6 +2,8 @@
 // Created by frank on 18-1-7.
 //
 
+#include <random>
+
 #include <eva/util.h>
 
 using namespace eva;
@@ -12,7 +14,7 @@ public:
     BulkServer(EventLoop* loop, const InetAddress& addr):
             loop_(loop),
             addr_(addr),
-            server_(loop, addr, "BulkServer")
+            server_(loop, addr, "Bulk server")
     {
         server_.setConnectionCallback(std::bind(
                 &BulkServer::onConnection, this, _1));
@@ -81,23 +83,119 @@ private:
     std::string message_;
 };
 
+const double kMaxInterval = 1; // second
+const int kMaxMessageLen = 14600;
+
+class InteractServer: noncopyable
+{
+public:
+    InteractServer(EventLoop* loop, const InetAddress& addr):
+            loop_(loop),
+            addr_(addr),
+            server_(loop, addr, "Interact server")
+    {
+        server_.setConnectionCallback(std::bind(
+                &InteractServer::onConnection, this, _1));
+        server_.setMessageCallback(std::bind(
+                &InteractServer::onMessage, this, _1, _2, _3));
+
+        auto seed = static_cast<unsigned long>(time(nullptr));
+        std::default_random_engine generator(seed);
+        std::uniform_int_distribution<int> messageLen(1, kMaxMessageLen);
+        // 1ms ~ 1s
+        std::uniform_real_distribution<double> interval(0.001, kMaxInterval);
+
+        generateMessageLen = std::bind(messageLen, generator);
+        generateInterval = std::bind(interval, generator);
+
+        std::fill(message_, message_ + kMaxMessageLen, 'x');
+    }
+
+    void start()
+    {
+        LOG_INFO << "Interact server(" << congestionControl_ << ") "
+                 << addr_.toIpPort();
+        server_.start();
+    }
+
+    void setCongestionControl(const std::string &name)
+    {
+        congestionControl_ = name;
+    }
+
+private:
+    void onConnection(const TcpConnectionPtr& conn)
+    {
+        if (conn->connected()) {
+            LOG_INFO << conn->name() << " [up]";
+            conn->setCongestionControl(congestionControl_.c_str());
+            sendMessage(conn);
+        }
+        else {
+            LOG_INFO << conn->name() << " [down]";
+        }
+    }
+
+    void onMessage(const TcpConnectionPtr& conn,
+                   Buffer* buf,
+                   Timestamp time)
+    {
+        auto msg(buf->retrieveAllAsString());
+        LOG_INFO << conn->name() << " discards " << msg.size()
+                 << " bytes received at ";
+    }
+
+    void sendMessage(const TcpConnectionPtr& conn)
+    {
+        int len = generateMessageLen();
+        conn->send(message_, len);
+
+        double interval = generateInterval();
+        loop_->runAfter(interval, [this, conn](){
+           sendMessage(conn);
+        });
+    }
+
+private:
+    EventLoop* loop_;
+    InetAddress addr_;
+    TcpServer server_;
+    std::string congestionControl_;
+
+    char message_[kMaxMessageLen];
+
+    std::function<int()>    generateMessageLen;
+    std::function<double()> generateInterval;
+};
+
+
+
 int main(int argc, char** argv)
 {
-    if (argc < 4) {
-        fprintf(stderr, "Usage: server <address> <port> <congestion control>\n");
+    if (argc != 5) {
+        fprintf(stderr, "Usage: server <-b/i> <address> <port> <congestion control>\n");
         exit(1);
     }
 
-    auto ip = argv[1];
-    auto port = static_cast<uint16_t>(atoi(argv[2]));
-    auto congestionControl = argv[3];
+    char type = argv[1][1];
+    auto ip = argv[2];
+    auto port = static_cast<uint16_t>(atoi(argv[3]));
+    auto congestionControl = argv[4];
 
     EventLoop loop;
 
     InetAddress addr(ip, port);
-    BulkServer server(&loop, addr);
-    server.setCongestionControl(congestionControl);
-    server.start();
 
-    loop.loop();
+    if (type == 'i') {
+        InteractServer server(&loop, addr);
+        server.setCongestionControl(congestionControl);
+        server.start();
+        loop.loop();
+    }
+    else {
+        BulkServer server(&loop, addr);
+        server.setCongestionControl(congestionControl);
+        server.start();
+        loop.loop();
+    }
 }

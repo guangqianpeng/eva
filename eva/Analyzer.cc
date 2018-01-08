@@ -110,6 +110,8 @@ void Analyzer::onRateSample(const RateSample& rs)
 
 void Analyzer::onNewRoundtrip(Timestamp when)
 {
+    auto port = dstAddress().toPort();
+
     LOG_DEBUG << "[" << roundtripCount() << "]"
               << "\n\tslow start: " << votes_[SLOW_STAR_LIMITED]
               << "\n\tbandwidth limited: " << votes_[BANDWIDTH_LIMITED]
@@ -120,7 +122,7 @@ void Analyzer::onNewRoundtrip(Timestamp when)
 
     assert(firstAckTime_.valid());
 
-    std::cout << "[" << roundtripCount() << "]"
+    std::cout << "[" << roundtripCount() << "]" << " ["<< port <<"]"
               << " " << bandwidthFilter_.GetBest() << "kB/s"
               << " " << rtprop_ << "us "
               << extractHours(firstAckTime_) << " -> "
@@ -132,9 +134,16 @@ void Analyzer::onNewRoundtrip(Timestamp when)
     switch (ret)
     {
         case SLOW_STAR_LIMITED:
-            std::cout << "[slow start]"
-                      << " (" << votes_[ret] << "/" << total << ")"
-                      << "\n";
+            if (seeSmallUnit_) {
+                std::cout << "[application limited]" // && slow start
+                          << " (" << votes_[ret] << "/" << total << ")"
+                          << "\n";
+            }
+            else {
+                std::cout << "[slow start]"
+                          << " (" << votes_[ret] << "/" << total << ")"
+                          << "\n";
+            }
             break;
         case BANDWIDTH_LIMITED:
             std::cout << "[bandwidth limited]"
@@ -202,6 +211,9 @@ void Analyzer::onQuitSlowStart(Timestamp when)
 
 Result Analyzer::countVotes()
 {
+    if (isSlowStart_)
+        return SLOW_STAR_LIMITED;
+
     int ret = SLOW_STAR_LIMITED;
     for (int i = 1; i < UNKNOWN_LIMITED; i++) {
         if (votes_[i] > votes_[ret])
@@ -213,9 +225,9 @@ Result Analyzer::countVotes()
            static_cast<Result>(ret);
 }
 
-uint32_t Analyzer::bdp() const
+int64_t Analyzer::bdp() const
 {
     auto milliseconds = rtprop_ / 1000;
     auto btlbw = bandwidthFilter_.GetBest();
-    return static_cast<uint32_t>(milliseconds * btlbw);
+    return (milliseconds * btlbw);
 }

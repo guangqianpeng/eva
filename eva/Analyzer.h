@@ -56,7 +56,7 @@ public:
     void onTimeoutRxmit(Timestamp first, Timestamp rexmit);
     void onQuitSlowStart(Timestamp when);
 
-    uint32_t bdp() const;
+    int64_t bdp() const;
 
 private:
     Result countVotes();
