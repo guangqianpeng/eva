@@ -36,7 +36,7 @@ public:
 
     void start()
     {
-        LOG_INFO << "BulkServer at "
+        LOG_INFO << "BulkServer(" << congestionControl_ << ") "
                  << addr_.toIpPort();
         server_.start();
     }
