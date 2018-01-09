@@ -11,10 +11,11 @@ using namespace eva;
 class BulkServer: noncopyable
 {
 public:
-    BulkServer(EventLoop* loop, const InetAddress& addr):
+    BulkServer(EventLoop* loop, const InetAddress& addr, int64_t kiB):
             loop_(loop),
             addr_(addr),
-            server_(loop, addr, "Bulk server")
+            server_(loop, addr, "Bulk server"),
+            kiB_(kiB)
     {
         server_.setConnectionCallback(std::bind(
                 &BulkServer::onConnection, this, _1));
@@ -54,7 +55,8 @@ private:
         if (conn->connected()) {
             LOG_INFO << conn->name() << " [up]";
             conn->setCongestionControl(congestionControl_.c_str());
-            conn->send(message_);
+            conn->setContext(kiB_ * 1024);
+            onWriteComplete(conn);
         }
         else {
             LOG_INFO << conn->name() << " [down]";
@@ -72,7 +74,21 @@ private:
 
     void onWriteComplete(const TcpConnectionPtr& conn)
     {
-        conn->send(message_);
+        auto restBytes = boost::any_cast<int64_t>(conn->getContext());
+        auto length = static_cast<int64_t>(message_.length());
+        if (restBytes < 0 || restBytes >= length) {
+            conn->send(message_);
+            restBytes -= length;
+        }
+        else if (restBytes > 0) {
+            conn->send(message_.c_str(),
+                       static_cast<int>(restBytes));
+            restBytes = 0;
+        }
+        else {
+            conn->shutdown();
+        }
+        conn->setContext(restBytes);
     }
 
 private:
@@ -81,6 +97,7 @@ private:
     TcpServer server_;
     std::string congestionControl_;
     std::string message_;
+    const int64_t kiB_;
 };
 
 const double kMaxInterval = 1; // second
@@ -168,12 +185,10 @@ private:
     std::function<double()> generateInterval;
 };
 
-
-
 int main(int argc, char** argv)
 {
-    if (argc != 5) {
-        fprintf(stderr, "Usage: server <-b/i> <address> <port> <congestion control>\n");
+    if (argc < 5) {
+        fprintf(stderr, "Usage: server <-b/i/f> <address> <port> <congestion control> [KiB]\n");
         exit(1);
     }
 
@@ -181,19 +196,23 @@ int main(int argc, char** argv)
     auto ip = argv[2];
     auto port = static_cast<uint16_t>(atoi(argv[3]));
     auto congestionControl = argv[4];
+    auto mbytes = argc >= 5 ? atoi(argv[5]) : -1;
 
     EventLoop loop;
 
     InetAddress addr(ip, port);
 
     if (type == 'i') {
+        if (argc < 6) {
+            LOG_WARN << "arg 5 not used";
+        }
         InteractServer server(&loop, addr);
         server.setCongestionControl(congestionControl);
         server.start();
         loop.loop();
     }
     else {
-        BulkServer server(&loop, addr);
+        BulkServer server(&loop, addr, mbytes);
         server.setCongestionControl(congestionControl);
         server.start();
         loop.loop();
