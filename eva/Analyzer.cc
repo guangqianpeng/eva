@@ -49,7 +49,16 @@ void Analyzer::onRateSample(const RateSample& rs)
     if (rs.seeSmallUnit) {
         seeSmallUnit_ = true;
     }
-    if (seeSmallUnit_ && rs.isSenderLimited) {
+
+    if (rs.isReceiverLimited) {
+        LOG_DEBUG << "[" << roundtripCount() << "]"
+                  << " [receiver limited] pipe size = "
+                  << pipeSize()
+                  << " receiver window = "
+                  << recvWindow();
+        votes_[RECEIVER_LIMITED]++;
+    }
+    else if (seeSmallUnit_ && rs.isSenderLimited) {
         LOG_DEBUG << "[" << roundtripCount() << "]"
                   << " [sender limited]"
                   <<" pipe size = "
@@ -62,14 +71,6 @@ void Analyzer::onRateSample(const RateSample& rs)
         LOG_DEBUG << "[" << roundtripCount() << "]"
                   << " [slow start]";
         votes_[SLOW_STAR_LIMITED]++;
-    }
-    else if (rs.isReceiverLimited) {
-        LOG_DEBUG << "[" << roundtripCount() << "]"
-                  << " [receiver limited] pipe size = "
-                  << pipeSize()
-                  << " receiver window = "
-                  << recvWindow();
-        votes_[RECEIVER_LIMITED]++;
     }
     else if (rs.isSenderLimited) {
         LOG_DEBUG << "[" << roundtripCount() << "]"
@@ -134,9 +135,14 @@ void Analyzer::onNewRoundtrip(Timestamp when)
     switch (ret)
     {
         case SLOW_STAR_LIMITED:
-            if (seeSmallUnit_) {
+            if (votes_[RECEIVER_LIMITED] > 0) {
+                std::cout << "[receiver limited]" // && slow start
+                          << " (" << votes_[RECEIVER_LIMITED] << "/" << total << ")"
+                          << "\n";
+            }
+            else if (seeSmallUnit_) {
                 std::cout << "[application limited]" // && slow start
-                          << " (" << votes_[ret] << "/" << total << ")"
+                          << " (" << votes_[SENDER_LIMITED] << "/" << total << ")"
                           << "\n";
             }
             else {

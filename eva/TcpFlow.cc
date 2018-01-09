@@ -106,12 +106,10 @@ void TcpFlow<Analyzer>::preHandleDataUnit(const DataUnit& dataUnit)
 
     bool smallUnit = !u.isSYN() && !u.isFIN() &&
                        dataUnit.u->optionLength + dataUnit.u->dataLength < mss_;
-    bool pipeNotFull = pipeSize_ < convert().bdp() * 9 / 10;
-
-
+    bool pipeNotFull = 5 * mss_ + pipeSize_ < convert().bdp();
 
     // fixme: remove magic number
-    isReceiverLimited_ = (pipeSize_ > recvWindow_ * 9 / 10);
+    isReceiverLimited_ = (5 * mss_ + pipeSize_ > recvWindow_);
     isSenderLimited_ = (!isReceiverLimited_ &&
                         (smallUnit || pipeNotFull));
 

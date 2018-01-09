@@ -12,19 +12,24 @@ using namespace eva;
 int main(int argc, char** argv)
 {
     if (argc != 4) {
-        printf("./run srcAddress dstAddress interface");
+        printf("./run srcAddress dstAddress interface/file");
         exit(1);
     }
 
     const char* srcAddress = argv[1];
     const char* dstAddress = argv[2];
     const char* interface = argv[3];
+    const char* file = interface;
 
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap* cap = pcap_open_live(interface, 65560, 1, 0, errbuf);
     if (cap == nullptr) {
         printf("%s\n", errbuf);
-        exit(1);
+        cap = pcap_open_offline(file, errbuf);
+        if (cap == nullptr) {
+            printf("%s\n", errbuf);
+            exit(1);
+        }
     }
 
     int linkType = pcap_datalink(cap);
@@ -81,8 +86,8 @@ int main(int argc, char** argv)
             if (it == flowMap.end()) {
                 if (unit.isSYN()) {
                     auto analyzer = new Analyzer(ackUnit);
-                    flowMap.emplace(unit, new Analyzer(ackUnit));
                     analyzer->onAckUnit(ackUnit);
+                    flowMap.emplace(unit, analyzer);
                 }
             }
             else if (!unit.isRST()) {

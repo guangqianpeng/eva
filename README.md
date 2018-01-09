@@ -75,13 +75,15 @@ The above code also describes when to quit slow start phase. In order to improve
 - **pipe_size**: currently sent but not acked data length in bytes
 - **rwnd**: rwnd of newest ack
 - **WSC**: TCP window scale option. *Continuous estimation is needed if we missed receiver's SYN packet*
+- **MSS**: TCP max segment size. *Continuous estimation is needed if we missed receiver's SYN packet*
 
 
 Upon sending a packet, we do the following:
 
 ```C++
 func mark_receiver_limited(packet):
-    if (pipe_size > (rwnd << wsc) * 9 / 10)
+    real_rwnd = rwnd << wsc
+    if (real_rwnd < pipe_size + 5 * mss)
         packet.is_receiver_limited = true
 ```
 Note that receiver may advertises a window size of 0, forcing sender to stop, which gives us no chance to output a diagnosis. However, TCP's **persist timer** saves us. From wikipedia:
@@ -104,7 +106,7 @@ Upon sending a packet, we do the following:
 func mark_sender_limited(packet):
     if (packet.length < mss)
         packet.is_application_limited = true
-    else if (pipe_size < bdp * 4 / 5)
+    else if (bdp < pipe_size + 5 * mss)
         packet.is_kernel_limited = true
 ```
 TCP Nagle algorithm can affect the accuracy of the diagnosis because it tries to merge small TCP packets into a single `MSS` size packet, leading to `kernel limited` instead of `application limited`. The RFC defines the algorithm as:
@@ -191,6 +193,48 @@ func diagnose(pkt, ack):
 ```
 **Diagnostic Granularity**. The above code output a diagnostic result for each \{ packet, ack \} pair, which is too granular, and may have a lot of noise. Optional granularity may be fixed number of packets or fixed time interval , just like `Trat`.  However, I use `round trip` level granularity based on following obeservation: **packets in the same round trip tend to suffer from the same limitation. In order to filter out the "noise" or unknown limited, we choose the most votes in the batch of diagnosis results**. Note that the number of packets and time interval may vary in different `round trip`.
 
+## Evaluation
+
+### slow start
+
+- network: bandwidth: **40Mbps**, delay: **30ms**, mss: **1460**, with or without background traffic 
+- server: send **10kiB ~ 1000kiB** files, increase by **10kiB**
+- client: no limit
+
+**Result without background traffic**. For `cubic`, we correctly identified all of the connections as `slow start`. However, for files >= 300kiB, we also indentified `bandwith limited`. For `bbr`, we correctly identified all of the connections as `slow start`.  However, for files  >= 630kiB, we also indentified `bandwith limited`. The difference between the two is not due to diagnostic errors, but because bbr takes a more aggressive slow-start strategy than cubic and we have just verified this.
+
+**Result with background traffic**. The result is almost the same as above, except that `cubic` see `bandwidth limited` until file size >= 310kiB.
+
+### receiver limited
+
+- network: bandwidth: **40Mbps**, delay: **30ms**, mss: **1460**, with or without background traffic 
+- server: send **10MiB** file
+- client: set recv buffer range **0.1*BDP** ~ **1.2*BDP** or set recv app read speed **0.1*BtlBW** ~ **1.0*BtlBw**
+
+**various recv buffer size, no background traffic, cubic**:
+
+| recv buffer size (BDP) | receiver limited | slow start | bandwidth limited | kernel limited | total |
+| :--------------------: | :--------------: | :--------: | :---------------: | :------------: | :---: |
+|          0.1           |       867        |     1      |         0         |       0        |  868  |
+|          0.2           |       401        |     2      |         0         |       0        |  403  |
+|          0.3           |       237        |     3      |         1         |       4        |  245  |
+|          0.4           |       175        |     3      |         0         |       6        |  184  |
+|          0.5           |       142        |     4      |         1         |       0        |  147  |
+|          0.6           |       119        |     4      |         0         |       0        |  123  |
+|          0.7           |        98        |     4      |         0         |       6        |  108  |
+|          0.8           |        75        |     5      |         9         |       8        |  97   |
+|          0.9           |        73        |     5      |         6         |       0        |  84   |
+|          1.0           |        63        |     5      |         9         |       0        |  77   |
+|          1.1           |        58        |     5      |         7         |       0        |  70   |
+|          1.2           |        50        |     5      |        12         |       0        |  67   |
+|          1.3           |        51        |     5      |         4         |       0        |  60   |
+|          1.4           |        39        |     5      |        15         |       0        |  59   |
+|          1.5           |        38        |     5      |        15         |       0        |  58   |
+
+**various recv buffer size, no background traffic, bbr**:
+
+
+
 ## Example
 
 output format:
@@ -245,10 +289,3 @@ output format:
 
 - real-time fine-grained TCP diagnosis with 7 kinds of results/limitations
 - applies to any CC
-
-## Q&A
-
-- Q: Why packet, ack in round trip duration? what if too long/no pair? should also consider a timeout for diagnosing period? packets/acks are in series, which pair to pick?
-
-
-- A: 

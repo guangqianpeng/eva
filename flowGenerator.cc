@@ -39,7 +39,7 @@ public:
 
     void start()
     {
-        LOG_INFO << "BulkServer(" << congestionControl_ << ") "
+        LOG_INFO << "BulkServer(" << congestionControl_ << ") " << kiB_ << "kiB "
                  << addr_.toIpPort();
         server_.start();
     }
@@ -86,7 +86,9 @@ private:
             restBytes = 0;
         }
         else {
-            conn->shutdown();
+            loop_->runAfter(1, [=](){
+                conn->shutdown();
+            });
         }
         conn->setContext(restBytes);
     }
@@ -196,14 +198,14 @@ int main(int argc, char** argv)
     auto ip = argv[2];
     auto port = static_cast<uint16_t>(atoi(argv[3]));
     auto congestionControl = argv[4];
-    auto mbytes = argc >= 5 ? atoi(argv[5]) : -1;
+    auto mbytes = argc > 5 ? atoi(argv[5]) : -1;
 
     EventLoop loop;
 
     InetAddress addr(ip, port);
 
     if (type == 'i') {
-        if (argc < 6) {
+        if (argc > 5) {
             LOG_WARN << "arg 5 not used";
         }
         InteractServer server(&loop, addr);
