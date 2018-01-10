@@ -46,6 +46,9 @@ private:
                     conn->startRead();
             });
         }
+        else {
+            conn->shutdown();
+        }
     }
 
     void onMessage(const TcpConnectionPtr& conn,
