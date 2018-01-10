@@ -16,10 +16,14 @@ int main(int argc, char** argv)
         exit(1);
     }
 
+    
     const char* srcAddress = argv[1];
     const char* dstAddress = argv[2];
     const char* interface = argv[3];
     const char* file = interface;
+
+    printf("%s %s %s\n", srcAddress, dstAddress, interface);
+
 
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap* cap = pcap_open_live(interface, 65560, 1, 0, errbuf);

@@ -1,4 +1,4 @@
-# TCP Diagnostic Tool Design
+# 65TCP Diagnostic Tool Design
 
 ## Background
 
@@ -160,8 +160,6 @@ A TCP flow is timeout/unresponsive means the network/receiver is down or severel
 
 ## Handle TCP SACK Option
 
-// TODO
-
 **Ingoring SACK can result in overestimation of `BtlBw`.**
 
 ## Diagnostic Logic
@@ -231,7 +229,31 @@ func diagnose(pkt, ack):
 |          1.4           |        39        |     5      |        15         |       0        |  59   |
 |          1.5           |        38        |     5      |        15         |       0        |  58   |
 
+**various recv buffer size, background traffic, cubic**: almost same as above
+
 **various recv buffer size, no background traffic, bbr**:
+
+| recv buffer size (BDP) | receiver limited | slow start | bandwidth limited | kernel limited | total |
+| :--------------------: | :--------------: | :--------: | :---------------: | :------------: | :---: |
+|          0.1           |       959        |     1      |         0         |       6        |  966  |
+|          0.2           |       402        |     2      |         0         |       0        |  404  |
+|          0.3           |       241        |     3      |         1         |       3        |  248  |
+|          0.4           |       180        |     3      |         0         |       0        |  183  |
+|          0.5           |       143        |     4      |         1         |       0        |  148  |
+|          0.6           |       118        |     4      |         0         |       1        |  123  |
+|          0.7           |       101        |     5      |         0         |       0        |  107  |
+|          0.8           |        88        |     5      |         1         |       0        |  94   |
+|          0.9           |        79        |     5      |         0         |       0        |  84   |
+|          1.0           |        71        |     5      |         1         |       0        |  77   |
+|          1.1           |        64        |     5      |         1         |       0        |  70   |
+|          1.2           |        59        |     5      |         0         |       0        |  64   |
+|          1.3           |        54        |     6      |         0         |       0        |  60   |
+|          1.4           |        5         |     6      |        50         |       0        |  63   |
+|          1.5           |        4         |     6      |        52         |       0        |  62   |
+
+**various recv buffer size, background traffic, bbr**: almost same as above
+
+**various app read speed, no background traffic, cubic**:
 
 
 

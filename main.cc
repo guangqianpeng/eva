@@ -76,7 +76,6 @@ int main()
         }
     }
 
-    if (analyzer != nullptr)
-        delete analyzer;
+    delete analyzer;
     pcap_close(cap);
 }
