@@ -3,6 +3,11 @@ cmake-build-release
 .idea
 *.pcap
 data
-slow_start_data
-receiver_limited
 script
+/slow_start_data/
+/receiver_window_limited/
+/receiver_speed_limited/
+/kernel_cc_limited/
+/real/
+/kernel_buffer_limited/
+/congestion_limited/

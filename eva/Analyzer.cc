@@ -12,17 +12,24 @@ using namespace eva;
 namespace
 {
 
-const int64_t kRtpropExpration = 10 * Timestamp::kMicroSecondsPerSecond;
+const int64_t kRtpropExpration = 30 * Timestamp::kMicroSecondsPerSecond;
 
 }
 
-void Analyzer::onRateSample(const RateSample& rs)
+void Analyzer::onRateSample(const RateSample& rs, const AckUnit& ackUnit)
+
 {
     assert(rs.ackReceivedTime.valid());
     assert(rs.dataSentTime.valid());
 
+    bool rttIsValid = (!rs.seeRexmit && !ackUnit.u->isSACK()) ||
+                       rs.rtt > rtprop_;
+
+    if (rttIsValid)
+        ackCount_++;
+
     if (rtprop_ < 0 ||
-        rtprop_ > rs.rtt ||
+        (rttIsValid && rtprop_ > rs.rtt) ||
         rs.ackReceivedTime - rtpropTimestamp_ >= kRtpropExpration)
     {
         rtprop_ = rs.rtt;
@@ -32,75 +39,53 @@ void Analyzer::onRateSample(const RateSample& rs)
                   << rtprop_ << "us";
     }
 
+
     if (!firstAckTime_.valid()) {
         firstAckTime_ = rs.ackReceivedTime;
     }
 
     auto btlbw = bandwidthFilter_.GetBest();
 
+    if (rs.seeSmallUnit)
+        smallUnitCount_++;
+
+    if (maxDeliveryRate_ < rs.deliveryRate)
+        maxDeliveryRate_ = rs.deliveryRate;
+
+    if (rs.seeRexmit || ackUnit.u->isSACK())
+        seeRexmit_ = true;
+
+    bool rttTooLong = (rttIsValid && rs.rtt > rtprop_ * 7 / 5);
+    if (rttTooLong)
+        rttTooLongCount_++;
+
+    if (rttIsValid && rs.rtt > rtprop_ * 5 / 2)
+        rttHugeCount_++;
 
     if (rs.deliveryRate >= btlbw ||
-        ( !rs.isSenderLimited &&
-          !rs.isReceiverLimited)) {
+        rttTooLong ||
+        (!rs.isSenderLimited &&
+         !rs.isReceiverLimited)) {
         bandwidthFilter_.Update(rs.deliveryRate,
                                 roundtripCount());
     }
 
-    if (rs.seeSmallUnit) {
-        seeSmallUnit_ = true;
-    }
-
     if (rs.isReceiverLimited) {
-        LOG_DEBUG << "[" << roundtripCount() << "]"
-                  << " [receiver limited] pipe size = "
-                  << pipeSize()
-                  << " receiver window = "
-                  << recvWindow();
         votes_[RECEIVER_LIMITED]++;
     }
-    else if (seeSmallUnit_ && rs.isSenderLimited) {
-        LOG_DEBUG << "[" << roundtripCount() << "]"
-                  << " [sender limited]"
-                  <<" pipe size = "
-                  << pipeSize()
-                  << " bdp = "
-                  << bdp();
+    else if (rs.isSenderLimited) {
         votes_[SENDER_LIMITED]++;
     }
     else if (isSlowStart_ || slowStartQuitTime >= rs.dataSentTime) {
-        LOG_DEBUG << "[" << roundtripCount() << "]"
-                  << " [slow start]";
         votes_[SLOW_STAR_LIMITED]++;
     }
-    else if (rs.isSenderLimited) {
-        LOG_DEBUG << "[" << roundtripCount() << "]"
-                  << " [sender limited]"
-                  <<" pipe size = "
-                  << pipeSize()
-                  << " bdp = "
-                  << bdp();
-        votes_[SENDER_LIMITED]++;
-    }
     else if (rs.deliveryRate >= btlbw * 4 / 5) {
-        LOG_DEBUG << "[" << roundtripCount() << "]"
-                  << " [bandwidth limited] BtlBw = "
-                  << btlbw
-                  << " delivery rate = "
-                  << rs.deliveryRate;
         votes_[BANDWIDTH_LIMITED]++;
     }
-    else if (rs.rtt > rtprop_ * 6 / 5) {
-
-        LOG_DEBUG << "[" << roundtripCount() << "]"
-                  << " [congestion limited] delay = "
-                  << rtprop_
-                  << " rtt = "
-                  << rs.rtt;
+    else if (rttTooLong) {
         votes_[CONGESTION_LIMITED]++;
     }
     else {
-        LOG_DEBUG << "[" << roundtripCount() << "]"
-                  << " [unknown limited]";
         votes_[UNKNOWN_LIMITED]++;
     }
 
@@ -109,7 +94,12 @@ void Analyzer::onRateSample(const RateSample& rs)
               << " rtt: " << rs.rtt;
 }
 
-void Analyzer::onNewRoundtrip(Timestamp when)
+void Analyzer::onNewRoundtrip(Timestamp now,
+                              Timestamp lastAckTime,
+                              int64_t bytesAcked,
+                              int64_t totalAckInterval,
+                              int64_t totalAckCount,
+                              int32_t currFlightSize)
 {
     auto port = dstAddress().toPort();
 
@@ -121,52 +111,99 @@ void Analyzer::onNewRoundtrip(Timestamp when)
               << "\n\tcongestion limited: " << votes_[CONGESTION_LIMITED]
               << "\n\tunknown limited: " << votes_[UNKNOWN_LIMITED];
 
-    assert(firstAckTime_.valid());
+    if(!firstAckTime_.valid()) {
+        return;
+    }
 
     std::cout << "[" << roundtripCount() << "]" << " ["<< port <<"]"
               << " " << bandwidthFilter_.GetBest() << "kB/s"
               << " " << rtprop_ << "us "
               << extractHours(firstAckTime_) << " -> "
-              << extractHours(when)
+              << extractHours(now)
               << " ";
+
+    if (rttHugeCount_ == ackCount_) {
+        std::cout << "(buffer bloat) ";
+    }
 
     int total = std::accumulate(votes_.begin(), votes_.end(), 0);
     Result ret = countVotes();
+
+
+    // change the results
+    if (votes_[RECEIVER_LIMITED] > 0) {
+        ret = RECEIVER_LIMITED;
+    }
+    else if (ret == BANDWIDTH_LIMITED ||
+             ret == UNKNOWN_LIMITED) {
+        // fixme: don't trust small unit!
+        // fixme: use flight acks spacing to figure out BANDWIDTH_LIMITED
+        auto spacing = (now - lastAckTime) / ((bytesAcked + mss()) / mss());
+        if (spacing * 20 > rtprop_) {
+            if ((rttTooLongCount_ > 0 && seeRexmit_) ||
+                 rttTooLongCount_ == ackCount_)
+            {
+                ret = CONGESTION_LIMITED;
+            }
+            else {
+                ret = SENDER_LIMITED;
+            }
+        }
+    }
+    else if (ret == SENDER_LIMITED) {
+        if ((rttTooLongCount_ > 0 && seeRexmit_) ||
+             rttTooLongCount_ == ackCount_)
+        {
+            ret = CONGESTION_LIMITED;
+        }
+    }
+    else if (smallUnitCount_) {
+        if (ret == SLOW_STAR_LIMITED)
+            ret = SENDER_LIMITED;
+    }
+
     switch (ret)
     {
         case SLOW_STAR_LIMITED:
-            if (votes_[RECEIVER_LIMITED] > 0) {
-                std::cout << "[receiver limited]" // && slow start
-                          << " (" << votes_[RECEIVER_LIMITED] << "/" << total << ")"
-                          << "\n";
-            }
-            else if (seeSmallUnit_) {
-                std::cout << "[application limited]" // && slow start
-                          << " (" << votes_[SENDER_LIMITED] << "/" << total << ")"
-                          << "\n";
-            }
-            else {
-                std::cout << "[slow start]"
-                          << " (" << votes_[ret] << "/" << total << ")"
-                          << "\n";
-            }
-            break;
-        case BANDWIDTH_LIMITED:
-            std::cout << "[bandwidth limited]"
+            std::cout << "[slow start]"
                       << " (" << votes_[ret] << "/" << total << ")"
                       << "\n";
             break;
-        case SENDER_LIMITED:
-            if (seeSmallUnit_) {
-                std::cout << "[application limited]"
+        case BANDWIDTH_LIMITED:
+            std::cout << "[bandwidth limited]"
                           << " (" << votes_[ret] << "/" << total << ")"
                           << "\n";
-            }
-            else {
+            break;
+        case SENDER_LIMITED: {
+
+            auto diff1 = static_cast<uint32_t>(std::abs(currFlightSize - prevFlightSize1_));
+            auto diff2 = static_cast<uint32_t>(std::abs(currFlightSize - prevFlightSize2_));
+            auto diff3 = static_cast<uint32_t>(std::abs(currFlightSize - prevFlightSize3_));
+            bool allZero = (diff1 == 0 && diff2 == 0 && diff3 == 0);
+
+
+
+            if (currFlightSize > static_cast<int32_t>(mss()) &&
+                (prevSmallUnitCount_ == 0 ||
+                 smallUnitCount_ == 0 ||
+                 allZero))
+            {
+                if (allZero) {
+                    std::cout << "(buffer)";
+                }
+                else {
+                    std::cout << "(cc)";
+                }
                 std::cout << "[kernel limited]"
                           << " (" << votes_[ret] << "/" << total << ")"
                           << "\n";
             }
+            else {
+                std::cout << "[application limited]"
+                          << " (" << votes_[ret] << "/" << total << ")"
+                          << "\n";
+            }
+        }
             break;
         case RECEIVER_LIMITED:
             std::cout
@@ -185,12 +222,21 @@ void Analyzer::onNewRoundtrip(Timestamp when)
         default:
             std::cout
                     << "[unknown limited]"
-                    << " (" << votes_[ret] << "/" << total << "/" << ")"
+                    << " (" << votes_[ret] << "/" << total << ")"
                     << "\n";
             break;
     }
     std::fill(votes_.begin(), votes_.end(), 0);
-    seeSmallUnit_ = false;
+    prevSmallUnitCount_ = smallUnitCount_;
+    smallUnitCount_ = 0;
+    maxDeliveryRate_ = 0;
+    prevFlightSize1_ = prevFlightSize2_;
+    prevFlightSize2_ = prevFlightSize3_;
+    prevFlightSize3_ = currFlightSize;
+    rttTooLongCount_ = 0;
+    rttHugeCount_ = 0;
+    ackCount_ = 0;
+    seeRexmit_ = false;
     firstAckTime_ = Timestamp::invalid();
 }
 
@@ -217,14 +263,14 @@ void Analyzer::onQuitSlowStart(Timestamp when)
 
 Result Analyzer::countVotes()
 {
-    if (isSlowStart_)
-        return SLOW_STAR_LIMITED;
-
     int ret = SLOW_STAR_LIMITED;
     for (int i = 1; i < UNKNOWN_LIMITED; i++) {
         if (votes_[i] > votes_[ret])
             ret = i;
     }
+
+    if (isSlowStart_)
+        return SLOW_STAR_LIMITED;
 
     return votes_[ret] == 0 ?
            UNKNOWN_LIMITED :
@@ -234,6 +280,6 @@ Result Analyzer::countVotes()
 int64_t Analyzer::bdp() const
 {
     auto milliseconds = rtprop_ / 1000;
-    auto btlbw = bandwidthFilter_.GetBest();
-    return (milliseconds * btlbw);
+    auto btlBw = bandwidthFilter_.GetBest();
+    return (milliseconds * btlBw);
 }

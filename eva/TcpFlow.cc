@@ -141,6 +141,7 @@ bool TcpFlow<Analyzer>::handleDataUnit(const DataUnit& dataUnit)
     p.deliveredTime = deliveredTime_;
     p.firstSentTime = firstSentTime_;
     p.isSlowStart = isSlowStart_;
+    p.isRexmit = false;
     p.isSenderLimited = isSenderLimited_;
     p.isReceiverLimited = isReceiverLimited_;
     p.isSmallUnit = !u.isSYN() &&
@@ -153,10 +154,13 @@ bool TcpFlow<Analyzer>::handleDataUnit(const DataUnit& dataUnit)
 
     if (nextSendSequence_ > u.dataSequence) {
 
+
         // sender reorder is rare, because we are at sender side
         // so it should be retransmit
         LOG_DEBUG << "[" << roundTripCount_ << "]"
                   << " sender retransmit";
+
+        p.isRexmit = true;
 
         int step = 0;
         auto r = flow_.rbegin();
@@ -173,9 +177,10 @@ bool TcpFlow<Analyzer>::handleDataUnit(const DataUnit& dataUnit)
             }
             else if (r->sequence < u.dataSequence) {
                 // spurious rexmit
-                LOG_ERROR << "[" << roundTripCount_ << "]"
+                LOG_INFO  << "[" << roundTripCount_ << "]"
                           << " no matching data unit for rexmit, may be reordered unit. "
                           << " please run at sender side! ";
+                *r = p;
                 break;
             }
             else if (++step >= kMaxReordered) {
@@ -190,12 +195,11 @@ bool TcpFlow<Analyzer>::handleDataUnit(const DataUnit& dataUnit)
         }
         return false;
     }
-    else if (nextSendSequence_ < u.dataSequence) {
-        LOG_ERROR << "[" << roundTripCount_ << "]"
-                  << " find reordered unit. please run at sender side!";
-        return false;
-    }
     else {
+        if (nextSendSequence_ < u.dataSequence) {
+            LOG_WARN  << "[" << roundTripCount_ << "]"
+                      << " find reordered unit. please run at sender side!";
+        }
         flow_.push_back(p);
         return true;
     }
@@ -217,6 +221,8 @@ void TcpFlow<Analyzer>::postHandleDataUnit(const DataUnit& dataUnit)
         currRoundtrip_.started = true;
         currRoundtrip_.startSequence = u.dataSequence;
         currRoundtrip_.seeSmallUnit = false;
+        currRoundtrip_.lastAckTime = Timestamp::invalid();
+        currRoundtrip_.deliveryAckCount = 0;
     }
 
     bool smallUnit = !u.isSYN() && !u.isFIN() &&
@@ -257,19 +263,21 @@ void TcpFlow<Analyzer>::preHandleAckUnit(const AckUnit& ackUnit)
 
     if (u.isSYN()) {
         // luckily, we see the option in receiver's SYN
-        seeMss_ = ackUnit.u->seeMss;
-        seeWsc_ = ackUnit.u->seeWsc;
-        mss_ = seeMss_ ? ackUnit.u->mss : kMinMss;
-        wsc_ = seeWsc_ ? ackUnit.u->wsc : kMinWsc;
+        seeMss_ = u.seeMss;
+        seeWsc_ = u.seeWsc;
+        mss_ = seeMss_ ? u.mss : kMinMss;
+        wsc_ = seeWsc_ ? u.wsc : kMinWsc;
     }
 
     if (!seeWsc_) {
         // continuously estimate window scale option
         // if we miss receiver's SYN
-        while (pipeSize_ > (ackUnit.u->recvWindow << wsc_))
-            wsc_++;
+        if (u.recvWindow > 0) {
+            while (pipeSize_ > (u.recvWindow << wsc_))
+                wsc_++;
+        }
         if (wsc_ > kMaxWsc) {
-            LOG_ERROR << "bad window scale option = " << wsc_;
+            LOG_INFO << "bad window scale option = " << wsc_;
             wsc_ = kMaxWsc;
         }
     }
@@ -288,14 +296,19 @@ bool TcpFlow<Analyzer>::handleAckUnit(const AckUnit& ackUnit)
     auto& u = *ackUnit.u;
 
     uint32_t bytesAcked = 0;
+    bool ackRexmitData = false;
 
     // a cumulative ack?
     auto it = flow_.begin();
     for (; it != flow_.end(); it++) {
         if (it->sequence < u.ackSequence) {
-            if (it->deliveredTime.valid())
+            if (it->deliveredTime.valid()) {
                 // ensure this unit was not sacked
                 bytesAcked += it->length;
+                if (it->isRexmit) {
+                    ackRexmitData = true;
+                }
+            }
         }
         else
             break;
@@ -314,6 +327,9 @@ bool TcpFlow<Analyzer>::handleAckUnit(const AckUnit& ackUnit)
                         if (start->deliveredTime.valid()) {
                             sacked.push_back(&*start);
                             bytesAcked += start->length;
+                            if (start->isRexmit) {
+                                ackRexmitData = true;
+                            }
                         }
                     }
                     else break;
@@ -338,13 +354,21 @@ bool TcpFlow<Analyzer>::handleAckUnit(const AckUnit& ackUnit)
         // units left in the pipe after this ack constitute the next round trip flights.
         // we are now setting next to current
         // and expecting a new data unit, which will become the first unit of next round trip
+        currRoundtrip_.lastAckTime = deliveredTime_;
+        int64_t totalAckInterval = currRoundtrip_.lastAckTime - currRoundtrip_.firstAckTime;
 
         assert(currRoundtrip_.started);
         if (roundTripCount_ > 0) {
-            convert().onNewRoundtrip(ackUnit.u->when);
+            convert().onNewRoundtrip(u.when,
+                                     deliveredTime_,
+                                     bytesAcked,
+                                     totalAckInterval,
+                                     currRoundtrip_.deliveryAckCount,
+                                     prevFlightSize_);
         }
         roundTripCount_++;
         currRoundtrip_.started = false;
+        currRoundtrip_.firstAckTime = u.when;
     }
 
     RateSample rs;
@@ -365,26 +389,27 @@ bool TcpFlow<Analyzer>::handleAckUnit(const AckUnit& ackUnit)
         return false;
     }
 
-
     /* Use the longer of the send_elapsed and ack_elapsed */
     rs.interval = std::max(rs.sendElapsed, rs.ackElapsed);
     rs.delivered = delivered_ - rs.priorDelivered;
+    rs.seeRexmit = ackRexmitData;
 
     if (rs.interval < kMinRtt) {
-        LOG_FATAL << srcAddress_.toIpPort() << "->"
+        LOG_ERROR << srcAddress_.toIpPort() << "->"
                   << dstAddress_.toIpPort()
                   << " interval too small (" << rs.interval << "us)";
+        rs.interval = kMinRtt;
     }
-    else {
-        rs.deliveryRate = rs.delivered * 1000 * 1000 / 1024 / (rs.interval);
-        convert().onRateSample(rs);
-    }
+
+    rs.deliveryRate = rs.delivered * 1000 * 1000 / 1024 / (rs.interval);
+    convert().onRateSample(rs, ackUnit);
     return true;
 }
 
 template <typename Analyzer>
 void TcpFlow<Analyzer>::postHandleAckUnit(const AckUnit& ackUnit)
 {
+    currRoundtrip_.deliveryAckCount++;
 }
 
 
@@ -440,7 +465,7 @@ void TcpFlow<Analyzer>::updateRateSample(P& p, const AckUnit& ack, RateSample* r
         firstSentTime_ = p.sentTime;
 
         // all timestamp should be valid
-        assert(rs->rtt >= 0);
+        // assert(rs->rtt >= 0);
         assert(rs->priorTime.valid());
         assert(rs->sendElapsed >= 0);
         assert(rs->ackElapsed >= 0);

@@ -11,11 +11,12 @@ using namespace eva;
 class BulkServer: noncopyable
 {
 public:
-    BulkServer(EventLoop* loop, const InetAddress& addr, int64_t kiB):
+    BulkServer(EventLoop* loop, const InetAddress& addr, int64_t totalkiB, int sendBuffer):
             loop_(loop),
             addr_(addr),
             server_(loop, addr, "Bulk server"),
-            kiB_(kiB)
+            totalkiB_(totalkiB),
+            sendBuffer_(sendBuffer)
     {
         server_.setConnectionCallback(std::bind(
                 &BulkServer::onConnection, this, _1));
@@ -39,7 +40,7 @@ public:
 
     void start()
     {
-        LOG_INFO << "BulkServer(" << congestionControl_ << ") " << kiB_ << "kiB "
+        LOG_INFO << "BulkServer(" << congestionControl_ << ") " << totalkiB_ << "kiB "
                  << addr_.toIpPort();
         server_.start();
     }
@@ -55,7 +56,10 @@ private:
         if (conn->connected()) {
             LOG_INFO << conn->name() << " [up]";
             conn->setCongestionControl(congestionControl_.c_str());
-            conn->setContext(kiB_ * 1024);
+            conn->setContext(totalkiB_ * 1024);
+            if (sendBuffer_ > 0)
+                conn->setSendBuffer(sendBuffer_);
+            conn->setTcpNoDelay(false);
             onWriteComplete(conn);
         }
         else {
@@ -99,19 +103,21 @@ private:
     TcpServer server_;
     std::string congestionControl_;
     std::string message_;
-    const int64_t kiB_;
+    const int64_t totalkiB_;
+    const int sendBuffer_;
 };
 
-const double kMaxInterval = 1; // second
+const double kMaxInterval = 0.1; // second
 const int kMaxMessageLen = 14600;
 
 class InteractServer: noncopyable
 {
 public:
-    InteractServer(EventLoop* loop, const InetAddress& addr):
+    InteractServer(EventLoop* loop, const InetAddress& addr, int lasts):
             loop_(loop),
             addr_(addr),
-            server_(loop, addr, "Interact server")
+            server_(loop, addr, "Interact server"),
+            lasts_(lasts)
     {
         server_.setConnectionCallback(std::bind(
                 &InteractServer::onConnection, this, _1));
@@ -149,6 +155,12 @@ private:
             LOG_INFO << conn->name() << " [up]";
             conn->setCongestionControl(congestionControl_.c_str());
             sendMessage(conn);
+
+            if (lasts_ > 0) {
+                loop_->runAfter(lasts_, [=](){
+                    conn->shutdown();
+                });
+            }
         }
         else {
             LOG_INFO << conn->name() << " [down]";
@@ -180,6 +192,7 @@ private:
     InetAddress addr_;
     TcpServer server_;
     std::string congestionControl_;
+    const int lasts_;
 
     char message_[kMaxMessageLen];
 
@@ -189,8 +202,8 @@ private:
 
 int main(int argc, char** argv)
 {
-    if (argc < 5) {
-        fprintf(stderr, "Usage: server <-b/i/f> <address> <port> <congestion control> [KiB]\n");
+    if (argc < 7) {
+        fprintf(stderr, "Usage: server <-b/i> <address> <port> <congestion control> <KiB/Time> <sendbuf>\n");
         exit(1);
     }
 
@@ -198,23 +211,22 @@ int main(int argc, char** argv)
     auto ip = argv[2];
     auto port = static_cast<uint16_t>(atoi(argv[3]));
     auto congestionControl = argv[4];
-    auto mbytes = argc > 5 ? atoi(argv[5]) : -1;
+    auto totalKiBytes = atoi(argv[5]);
+    auto lasts = totalKiBytes;
+    auto sendBuffer = atoi(argv[6]);
 
     EventLoop loop;
 
     InetAddress addr(ip, port);
 
     if (type == 'i') {
-        if (argc > 5) {
-            LOG_WARN << "arg 5 not used";
-        }
-        InteractServer server(&loop, addr);
+        InteractServer server(&loop, addr, lasts);
         server.setCongestionControl(congestionControl);
         server.start();
         loop.loop();
     }
     else {
-        BulkServer server(&loop, addr, mbytes);
+        BulkServer server(&loop, addr, totalKiBytes, sendBuffer);
         server.setCongestionControl(congestionControl);
         server.start();
         loop.loop();

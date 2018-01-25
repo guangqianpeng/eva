@@ -120,6 +120,8 @@ void parseTcpOptions(const unsigned char* data, uint32_t len,
 
     unit->optionLength = len;
     unit->sackCount = 0;
+    unit->seeMss = false;
+    unit->seeWsc = false;
 
     while (len > 0) {
         switch (data[0]) {

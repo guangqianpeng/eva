@@ -17,8 +17,6 @@ namespace eva
 
 struct Unit
 {
-
-
     Timestamp   when;
     InetAddress srcAddress;
     InetAddress dstAddress;

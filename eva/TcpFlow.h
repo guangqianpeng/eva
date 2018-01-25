@@ -44,6 +44,7 @@ private:
         Timestamp  deliveredTime;
         Timestamp  firstSentTime;
         bool       isSlowStart;
+        bool       isRexmit;
         bool       isSenderLimited;
         bool       isReceiverLimited;
         bool       isSmallUnit;
@@ -52,10 +53,13 @@ private:
 
     struct Roundtrip
     {
-        bool       started;
+        bool       started = false;
         Sequence   startSequence;
         Sequence   endSequence;
         bool       seeSmallUnit;
+        Timestamp  firstAckTime;
+        Timestamp  lastAckTime;
+        int64_t    deliveryAckCount;
 
         int32_t flightSize() const
         {
@@ -98,7 +102,13 @@ private:
     int32_t      prevFlightSize_;
 
     uint32_t     delivered_;
+    //The wall clock time when C.delivered was last updated.
     Timestamp    deliveredTime_;
+    /*
+     * If packets are in flight, then this holds the send
+     * time of the packet that was most recently marked as delivered.  Else,
+     * if the connection was recently idle, then this holds the send time of
+     * most recently sent packet.*/
     Timestamp    firstSentTime_;
     uint32_t     pipeSize_;
     uint32_t     recvWindow_;

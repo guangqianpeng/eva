@@ -36,15 +36,17 @@ public:
 private:
     void onConnection(const TcpConnectionPtr& conn)
     {
-        int64_t add = kiB_ * 1024 / 100; // bytes/100ms
         if (conn->connected()) {
-            setConnReadable(conn, add);
-            loop_->runEvery(0.01, [=](){
-                int64_t readable = getConnReadable(conn) + add;
-                setConnReadable(conn, readable);
-                if (readable > 0)
-                    conn->startRead();
-            });
+            if (kiB_ > 0) {
+                int64_t add = kiB_ * 1024 / 100; // bytes/100ms
+                setConnReadable(conn, add);
+                loop_->runEvery(0.01, [=]() {
+                    int64_t readable = getConnReadable(conn) + add;
+                    setConnReadable(conn, readable);
+                    if (readable > 0)
+                        conn->startRead();
+                });
+            }
         }
         else {
             conn->shutdown();
@@ -57,11 +59,14 @@ private:
     {
         auto msg(buf->retrieveAllAsString());
         printf("%s", msg.c_str());
-        int64_t readable = getConnReadable(conn);
-        readable -= static_cast<int64_t>(msg.size());
-        if (readable <= 0)
-            conn->stopRead();
-        conn->setContext(readable);
+
+        if (kiB_ > 0) {
+            int64_t readable = getConnReadable(conn);
+            readable -= static_cast<int64_t>(msg.size());
+            if (readable <= 0)
+                conn->stopRead();
+            conn->setContext(readable);
+        }
     }
 
     int64_t getConnReadable(const TcpConnectionPtr& conn)

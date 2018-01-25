@@ -40,6 +40,9 @@ target_link_libraries(main eva pcap)
 add_executable(run run.cc)
 target_link_libraries(run eva pcap)
 
+add_executable(run2 run2.cc)
+target_link_libraries(run2 eva pcap)
+
 add_executable(flow_generator flowGenerator.cc)
 target_link_libraries(flow_generator eva)
 

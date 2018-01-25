@@ -1,4 +1,4 @@
-# 65TCP Diagnostic Tool Design
+# TCP Diagnostic Tool Design
 
 ## Background
 
@@ -254,6 +254,152 @@ func diagnose(pkt, ack):
 **various recv buffer size, background traffic, bbr**: almost same as above
 
 **various app read speed, no background traffic, cubic**:
+
+| recv app read speed(BtlBw) | receiver limited | slow start | bandwidth limited | kernel limited | app limited | total |
+| :------------------------: | :--------------: | :--------: | :---------------: | :------------: | :---------: | :---: |
+|            0.1             |       410        |     5      |         1         |       1        |      0      |  417  |
+|            0.2             |       271        |     5      |         5         |       1        |      0      |  282  |
+|            0.3             |       168        |     5      |         9         |       6        |      0      |  188  |
+|            0.4             |       111        |     5      |        10         |       14       |      1      |  141  |
+|            0.5             |        98        |     5      |        13         |       1        |      0      |  117  |
+|            0.6             |        54        |     5      |        17         |       18       |      3      |  97   |
+|            0.7             |        48        |     5      |        29         |       1        |      0      |  83   |
+|            0.8             |        0         |     5      |        58         |       0        |      0      |  63   |
+|            0.9             |        0         |     5      |        56         |       0        |      0      |  61   |
+|            1.0             |        0         |     5      |        55         |       0        |      0      |  60   |
+
+**various app read speed, background traffic, cubic**: almost same as above
+
+**various app read speed, no background traffic, bbr**:
+
+| recv app read speed(BtlBw) | receiver limited | slow start | bandwidth limited | kernel limited | app limited | congestion limited | total |
+| :------------------------: | :--------------: | :--------: | :---------------: | :------------: | :---------: | :----------------: | ----- |
+|            0.1             |       417        |     5      |         0         |       40       |     31      |         0          | 500   |
+|            0.2             |       282        |     6      |         1         |       47       |      9      |         0          | 266   |
+|            0.3             |       188        |     9      |        10         |       0        |      0      |         12         | 176   |
+|            0.4             |       141        |     6      |         5         |       12       |      1      |         0          | 136   |
+|            0.5             |       117        |     6      |        11         |       6        |      0      |         0          | 100   |
+|            0.6             |        97        |     6      |        42         |       1        |      3      |         1          | 56    |
+|            0.7             |        83        |     6      |        39         |       1        |      0      |         0          | 53    |
+|            0.8             |        63        |     6      |        46         |       0        |      1      |         0          | 50    |
+|            0.9             |        61        |     6      |        47         |       1        |      0      |         0          | 55    |
+|            1.0             |        60        |     6      |        43         |       0        |      0      |         0          | 49    |
+
+**various app read speed, background traffic, bbr**: almost same as above.
+
+### application limited
+
+- network: bandwidth: **40Mbps**, delay: **30ms**, mss: **1460**
+- server: interval range **1ms~100ms**(randomly), data write to kernel range **1byte ~ 10mss**(randomly), combain **autocorking** and **Nagle** options
+- client: no limit
+
+|     sender options     | receiver limited | slow start | bandwidth limited | kernel limited | app limited | congestion limited | total |
+| :--------------------: | :--------------: | :--------: | :---------------: | :------------: | :---------: | :----------------: | :---: |
+|   cubic, cork, delay   |        0         |     1      |         0         |       1        |     554     |         0          |  556  |
+|  cubic, cork, nodelay  |        0         |     1      |         0         |       1        |     434     |         0          |  435  |
+|  cubic, nocork, delay  |        0         |     1      |         0         |       1        |     555     |         0          |  557  |
+| cubic, nocork, nodelay |        0         |     1      |         0         |       1        |     436     |         0          |  438  |
+|    bbr, cork, delay    |        0         |     3      |         0         |      140       |     435     |         0          |  576  |
+|   bbr, cork, nodelay   |        0         |     2      |         0         |       7        |     438     |         0          |  446  |
+|   bbr, nocork, delay   |        0         |     2      |         0         |       78       |     477     |         0          |  556  |
+|  bbr, nocork, nodelay  |        0         |     1      |         0         |       1        |     436     |         0          |  438  |
+
+### kernel send buffer limited
+
+**cubic**:
+
+| send buffer size (BDP) | receiver limited | slow start | bandwidth limited | kernel limited | app limited | total |
+| :--------------------: | :--------------: | :--------: | :---------------: | :------------: | :---------: | :---: |
+|          0.1           |        0         |     4      |         0         |       1        |     142     |  147  |
+|          0.2           |        0         |     3      |         1         |      136       |      2      |  142  |
+|          0.3           |        0         |     3      |         1         |       2        |     141     |  147  |
+|          0.4           |        0         |     4      |         1         |      121       |      4      |  131  |
+|          0.5           |        0         |     5      |         0         |       7        |     140     |  146  |
+|          0.6           |        0         |     5      |        11         |       74       |      4      |  94   |
+|          0.7           |        0         |     5      |        13         |       62       |      8      |  88   |
+|          0.8           |        0         |     5      |         7         |       66       |      3      |  81   |
+|          0.9           |        0         |     5      |        16         |       1        |     54      |  76   |
+|          1.0           |        0         |     5      |        60         |       0        |      0      |  65   |
+|          1.1           |        0         |     5      |        56         |       0        |      0      |  61   |
+|          1.2           |        0         |     5      |        52         |       0        |      0      |  57   |
+|          1.3           |        0         |     6      |        55         |       1        |      1      |  62   |
+|          1.4           |        0         |     6      |        55         |       1        |      0      |  61   |
+|          1.5           |        0         |     6      |        55         |       1        |      0      |  61   |
+
+
+**bbr:**
+| send buffer size (BDP) | receiver limited | slow start | bandwidth limited | kernel limited | app limited | total |
+| :--------------------: | :--------------: | :--------: | :---------------: | :------------: | :---------: | :---: |
+|          0.1           |        0         |     4      |         0         |      135       |      3      |  142  |
+|          0.2           |        0         |     3      |         1         |      123       |      4      |  131  |
+|          0.3           |        0         |     4      |         2         |      121       |      4      |  131  |
+|          0.4           |        0         |     5      |         0         |      106       |     10      |  121  |
+|          0.5           |        0         |     4      |         1         |      111       |      5      |  121  |
+|          0.6           |        0         |     5      |         1         |       2        |     57      |  65   |
+|          0.7           |        0         |     6      |         0         |       1        |     57      |  64   |
+|          0.8           |        0         |     6      |        13         |       23       |     16      |  58   |
+|          0.9           |        0         |     6      |         0         |       46       |      3      |  55   |
+|          1.0           |        0         |     6      |        44         |       2        |      1      |  53   |
+|          1.1           |        0         |     6      |        47         |       5        |      1      |  59   |
+|          1.2           |        0         |     6      |        45         |       6        |      2      |  59   |
+|          1.3           |        0         |     6      |        48         |       6        |      0      |  60   |
+|          1.4           |        0         |     6      |        51         |       1        |      2      |  60   |
+|          1.5           |        0         |     6      |        46         |       4        |      1      |  57   |
+### kernel CC limited
+
+**cubic**:
+
+| packet loss rate | receiver limited | slow start | bandwidth limited | kernel limited | app limited | congestion limited | total |
+| :--------------: | :--------------: | :--------: | :---------------: | :------------: | :---------: | :----------------: | :---: |
+|       0.01       |        0         |     3      |         1         |      678       |      0      |         0          |  682  |
+|       0.02       |        0         |     2      |         1         |      757       |      0      |        148         |  908  |
+|       0.03       |        0         |     2      |         6         |      1171      |      0      |         4          | 1183  |
+|       0.04       |        0         |     3      |         1         |      1239      |      0      |         2          | 1299  |
+|       0.05       |        0         |     3      |         4         |      1487      |      0      |         2          | 1496  |
+|       0.06       |        0         |     2      |         1         |      1650      |      0      |         2          | 1655  |
+|       0.07       |        0         |     2      |         4         |      1807      |      0      |         2          | 1815  |
+|       0.08       |        0         |     3      |         4         |      1913      |      0      |         1          | 1921  |
+|       0.09       |        0         |     3      |         2         |      2013      |      0      |         1          | 2019  |
+|       0.1        |        0         |     2      |         3         |      2060      |      0      |         0          | 2065  |
+
+**bbr:**
+
+| packet loss rate | receiver limited | slow start | bandwidth limited | kernel limited | app limited | congestion limited | total |
+| :--------------: | :--------------: | :--------: | :---------------: | :------------: | :---------: | :----------------: | :---: |
+|       0.01       |        0         |     8      |        32         |       2        |      0      |         0          |  42   |
+|       0.02       |        0         |     5      |        37         |       0        |      0      |         1          |  43   |
+|       0.03       |        0         |     4      |        33         |       1        |      0      |         0          |  38   |
+|       0.04       |        0         |     2      |        31         |       4        |      0      |         0          |  37   |
+|       0.05       |        0         |     3      |        30         |       5        |      0      |         1          |  38   |
+|       0.06       |        0         |     7      |        26         |       2        |      1      |         1          |  37   |
+|       0.07       |        0         |     5      |        29         |       0        |      0      |         0          |  34   |
+|       0.08       |        0         |     3      |        29         |       3        |      0      |         0          |  35   |
+|       0.09       |        0         |     4      |        23         |       1        |      2      |         0          |  30   |
+|       0.1        |        1         |     5      |        23         |       2        |      1      |         0          |  32   |
+
+### Bandwidth limited
+
+**cubic**:
+
+| \#conection | receiver limited | slow start | bandwidth limited | kernel limited | app limited | congestion limited | total |
+| :---------: | :--------------: | :--------: | :---------------: | :------------: | :---------: | :----------------: | :---: |
+|      1      |        0         |     5      |        51         |       5        |      0      |         0          |  61   |
+|      2      |        0         |     9      |        116        |       17       |      0      |         71         |  213  |
+|      3      |        0         |     16     |        91         |       97       |      0      |        546         |  750  |
+|      4      |        0         |     29     |        44         |      492       |      0      |        2347        | 2912  |
+|     16      |        0         |     41     |        71         |      3777      |      0      |        6920        | 10809 |
+
+**bbr**:
+
+| \#conection | receiver limited | slow start | bandwidth limited | kernel limited | app limited | congestion limited | total |
+| :---------: | :--------------: | :--------: | :---------------: | :------------: | :---------: | :----------------: | :---: |
+|      1      |        0         |     6      |        47         |       0        |      0      |         0          |  53   |
+|      2      |        0         |     10     |        90         |       3        |      0      |         7          |  110  |
+|      3      |        0         |     16     |        84         |       49       |      0      |        191         |  340  |
+|      4      |        0         |     24     |        66         |       97       |      0      |        1054        | 1241  |
+|     16      |        0         |     41     |        111        |      444       |      0      |        4079        | 4675  |
+
+### Congestion limited
 
 
 

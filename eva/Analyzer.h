@@ -35,7 +35,16 @@ public:
             rtprop_(-1),
             rtpropTimestamp_(Timestamp::invalid()),
             votes_(N_RESULT_TYPES),
-            seeSmallUnit_(false),
+            maxDeliveryRate_(0),
+            smallUnitCount_(0),
+            prevSmallUnitCount_(0),
+            prevFlightSize1_(0),
+            prevFlightSize2_(0),
+            prevFlightSize3_(0),
+            rttTooLongCount_(0),
+            rttHugeCount_(0),
+            ackCount_(0),
+            seeRexmit_(false),
             isSlowStart_(true)
     {}
 
@@ -45,14 +54,28 @@ public:
             rtprop_(-1),
             rtpropTimestamp_(Timestamp::invalid()),
             votes_(N_RESULT_TYPES),
-            seeSmallUnit_(false),
+            maxDeliveryRate_(0),
+            smallUnitCount_(0),
+            prevSmallUnitCount_(0),
+            prevFlightSize1_(0),
+            prevFlightSize2_(0),
+            prevFlightSize3_(0),
+            rttTooLongCount_(0),
+            rttHugeCount_(0),
+            ackCount_(0),
+            seeRexmit_(false),
             isSlowStart_(true)
     {}
 
     ~Analyzer(){}
 
-    void onRateSample(const RateSample& rs);
-    void onNewRoundtrip(Timestamp when);
+    void onRateSample(const RateSample& rs, const AckUnit& ackUnit);
+    void onNewRoundtrip(Timestamp now,
+                        Timestamp lastAckTime,
+                        int64_t bytesAcked,
+                        int64_t totalAckInterval,
+                        int64_t totalAckCount,
+                        int32_t currFlightSize);
     void onTimeoutRxmit(Timestamp first, Timestamp rexmit);
     void onQuitSlowStart(Timestamp when);
 
@@ -74,9 +97,21 @@ private:
     Timestamp rtpropTimestamp_;
     std::vector<int> votes_;
 
-    bool seeSmallUnit_;
+    int64_t maxDeliveryRate_;
+
+    int smallUnitCount_;
+    int prevSmallUnitCount_;
+    int32_t prevFlightSize1_;
+    int32_t prevFlightSize2_;
+    int32_t prevFlightSize3_;
+    int rttTooLongCount_;
+    int rttHugeCount_;
+    int ackCount_;
+
+
     Timestamp firstAckTime_;   // first ack time in this round trip
 
+    bool seeRexmit_;
     bool isSlowStart_;
     Timestamp slowStartQuitTime;
 };

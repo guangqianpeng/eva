@@ -26,6 +26,7 @@ struct RateSample
     int64_t    ackElapsed = -1;  //us
     bool       isSenderLimited = false;
     bool       isReceiverLimited = false;
+    bool       seeRexmit = false;
     bool       seeSmallUnit = false;
 };
 
