@@ -109,7 +109,7 @@ void TcpFlow<Analyzer>::preHandleDataUnit(const DataUnit& dataUnit)
     bool pipeNotFull = 5 * mss_ + pipeSize_ < convert().bdp();
 
     // fixme: remove magic number
-    isReceiverLimited_ = (5 * mss_ + pipeSize_ > recvWindow_);
+    isReceiverLimited_ = (3 * mss_ + pipeSize_ > recvWindow_);
     isSenderLimited_ = (!isReceiverLimited_ &&
                         (smallUnit || pipeNotFull));
 
@@ -346,7 +346,10 @@ bool TcpFlow<Analyzer>::handleAckUnit(const AckUnit& ackUnit)
     if (it == flow_.begin() && sacked.empty())
         return false;
 
-    assert(pipeSize_ >= bytesAcked);
+//    assert(pipeSize_ >= bytesAcked);
+    if (pipeSize_ < bytesAcked) {
+        pipeSize_ = bytesAcked;
+    }
     pipeSize_ -= bytesAcked;
 
     if (updateRoundtripCount(ackUnit)) {

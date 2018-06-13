@@ -52,7 +52,12 @@ int main(int argc, char** argv)
             Unit,
             Analyzer*> flowMap;
 
+    bool analyzed = false;
+    int n_packet = 0;
+    int n_flow = 0;
     while ((data = pcap_next(cap, &hdr)) != nullptr) {
+
+        n_packet++;
 
         eva::Unit unit;
         bool ok = eva::unpack(&hdr, data, linkType, &unit);
@@ -76,6 +81,7 @@ int main(int argc, char** argv)
                     auto analyzer = new Analyzer(dataUnit);
                     analyzer->onDataUnit(dataUnit);
                     flowMap.emplace(unit, analyzer);
+                    n_flow++;
                 }
             }
             else if (unit.dataLength > 0 || unit.isSYN())
@@ -86,6 +92,7 @@ int main(int argc, char** argv)
             {
                 delete it->second;
                 flowMap.erase(it);
+                analyzed = true;
             }
         }
             // ack unit
@@ -96,6 +103,8 @@ int main(int argc, char** argv)
                     auto analyzer = new Analyzer(ackUnit);
                     analyzer->onAckUnit(ackUnit);
                     flowMap.emplace(unit, analyzer);
+
+                    n_flow++;
                 }
             }
             else if (!unit.isRST()) {
@@ -105,7 +114,17 @@ int main(int argc, char** argv)
             else {
                 delete it->second;
                 flowMap.erase(it);
+                analyzed = true;
             }
         }
     }
+    for (auto& p: flowMap) {
+        delete p.second;
+        analyzed = true;
+    }
+
+    if (!analyzed) {
+        printf("0 0 0 0 0 0 0 0    0 0 0 0 0 0 0 0    0 0 0 0 0 0 0 0 \n");
+    }
+    // printf("%d packets, %d connections\n", n_packet, n_flow);
 }

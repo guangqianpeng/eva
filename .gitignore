@@ -11,3 +11,4 @@ script
 /real/
 /kernel_buffer_limited/
 /congestion_limited/
+/sync/

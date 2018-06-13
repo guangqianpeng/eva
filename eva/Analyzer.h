@@ -67,7 +67,7 @@ public:
             isSlowStart_(true)
     {}
 
-    ~Analyzer(){}
+    ~Analyzer();
 
     void onRateSample(const RateSample& rs, const AckUnit& ackUnit);
     void onNewRoundtrip(Timestamp now,
@@ -76,6 +76,7 @@ public:
                         int64_t totalAckInterval,
                         int64_t totalAckCount,
                         int32_t currFlightSize);
+    void AfterRoundTrip(int32_t currFlightSize);
     void onTimeoutRxmit(Timestamp first, Timestamp rexmit);
     void onQuitSlowStart(Timestamp when);
 

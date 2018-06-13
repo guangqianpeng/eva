@@ -272,9 +272,10 @@ Unit unpackReturnUnit(struct pcap_pkthdr* pkthdr, const unsigned char* data, int
     auto microSeconds = static_cast<int64_t>(pkthdr->ts.tv_usec);
 
     u.when = Timestamp(seconds * Timestamp::kMicroSecondsPerSecond + microSeconds);
-    if (pkthdr->caplen < pkthdr->len) {
-        throw Exception("caplen is less then len");
-    }
+    // pakcet header is OK!
+//    if (pkthdr->caplen < pkthdr->len) {
+//        throw Exception("caplen is less then len");
+//    }
     unpack(linkType, data, pkthdr->len, &u);
     u.srcAddress = createInetAddress(u.srcIP, u.srcPort);
     u.dstAddress = createInetAddress(u.dstIP, u.dstPort);

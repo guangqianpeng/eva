@@ -14,10 +14,47 @@ namespace
 
 const int64_t kRtpropExpration = 30 * Timestamp::kMicroSecondsPerSecond;
 
+enum {
+    kSlowStart,
+    kApplication,
+    kSendBuffer,
+    kCongestionControl,
+    kReceiveWindow,
+    kBandwidth,
+    kCongestion,
+    kBufferbloat,
+    kNOutput,
+};
+
+bool started = false;
+Timestamp start_time, end_time;
+
+std::vector<int64_t> duration_per_limit(kNOutput);
+
+std::vector<int64_t> bytes_per_limit(kNOutput);
+
+std::vector<int64_t> flight_per_limit(kNOutput);
+
 }
 
-void Analyzer::onRateSample(const RateSample& rs, const AckUnit& ackUnit)
+Analyzer::~Analyzer()
+{
+    for (auto d: duration_per_limit) {
+        std::cout << d << " ";
+    }
+    std::cout << "   ";
+    for (auto b: bytes_per_limit) {
+        std::cout << b << " ";
+    }
+    std::cout << "   ";
+    for (auto f: flight_per_limit) {
+        std::cout << f << " ";
+    }
+    std::cout << "\n";
+}
 
+
+void Analyzer::onRateSample(const RateSample& rs, const AckUnit& ackUnit)
 {
     assert(rs.ackReceivedTime.valid());
     assert(rs.dataSentTime.valid());
@@ -38,7 +75,6 @@ void Analyzer::onRateSample(const RateSample& rs, const AckUnit& ackUnit)
                   << " [update delay] "
                   << rtprop_ << "us";
     }
-
 
     if (!firstAckTime_.valid()) {
         firstAckTime_ = rs.ackReceivedTime;
@@ -66,7 +102,7 @@ void Analyzer::onRateSample(const RateSample& rs, const AckUnit& ackUnit)
         rttTooLong ||
         (!rs.isSenderLimited &&
          !rs.isReceiverLimited)) {
-        bandwidthFilter_.Update(rs.deliveryRate,
+         bandwidthFilter_.Update(rs.deliveryRate,
                                 roundtripCount());
     }
 
@@ -101,8 +137,7 @@ void Analyzer::onNewRoundtrip(Timestamp now,
                               int64_t totalAckCount,
                               int32_t currFlightSize)
 {
-    auto port = dstAddress().toPort();
-
+//    auto port = dstAddress().toPort();
     LOG_DEBUG << "[" << roundtripCount() << "]"
               << "\n\tslow start: " << votes_[SLOW_STAR_LIMITED]
               << "\n\tbandwidth limited: " << votes_[BANDWIDTH_LIMITED]
@@ -115,15 +150,31 @@ void Analyzer::onNewRoundtrip(Timestamp now,
         return;
     }
 
-    std::cout << "[" << roundtripCount() << "]" << " ["<< port <<"]"
+    // update global information
+    int64_t duration = (now - firstAckTime_) / 1000;
+    if (!started) {
+        started = true;
+        start_time = firstAckTime_;
+        end_time = now;
+    }
+    else {
+        end_time = now;
+    }
+
+    std::cout.width(6);
+    std::cout << " [" << roundtripCount() << "]"
               << " " << bandwidthFilter_.GetBest() << "kB/s"
               << " " << rtprop_ << "us "
               << extractHours(firstAckTime_) << " -> "
-              << extractHours(now)
-              << " ";
+              << extractHours(now) << " ";
 
     if (rttHugeCount_ == ackCount_) {
-        std::cout << "(buffer bloat) ";
+        std::cout << "[buffer bloat]\n";
+        duration_per_limit[kBufferbloat] += duration;
+        bytes_per_limit[kBufferbloat] += currFlightSize;
+        flight_per_limit[kBufferbloat]++;
+        AfterRoundTrip(currFlightSize);
+        return;
     }
 
     int total = std::accumulate(votes_.begin(), votes_.end(), 0);
@@ -141,18 +192,19 @@ void Analyzer::onNewRoundtrip(Timestamp now,
         auto spacing = (now - lastAckTime) / ((bytesAcked + mss()) / mss());
         if (spacing * 20 > rtprop_) {
             if ((rttTooLongCount_ > 0 && seeRexmit_) ||
-                 rttTooLongCount_ == ackCount_)
+                 rttTooLongCount_ > ackCount_ / 2)
             {
                 ret = CONGESTION_LIMITED;
             }
-            else {
+            else
+            {
                 ret = SENDER_LIMITED;
             }
         }
     }
     else if (ret == SENDER_LIMITED) {
         if ((rttTooLongCount_ > 0 && seeRexmit_) ||
-             rttTooLongCount_ == ackCount_)
+             rttTooLongCount_ == ackCount_ / 2)
         {
             ret = CONGESTION_LIMITED;
         }
@@ -168,11 +220,17 @@ void Analyzer::onNewRoundtrip(Timestamp now,
             std::cout << "[slow start]"
                       << " (" << votes_[ret] << "/" << total << ")"
                       << "\n";
+            duration_per_limit[kSlowStart] += duration;
+            bytes_per_limit[kSlowStart] += currFlightSize;
+            flight_per_limit[kSlowStart]++;
             break;
         case BANDWIDTH_LIMITED:
             std::cout << "[bandwidth limited]"
                           << " (" << votes_[ret] << "/" << total << ")"
                           << "\n";
+            duration_per_limit[kBandwidth] += duration;
+            bytes_per_limit[kBandwidth] += currFlightSize;
+            flight_per_limit[kBandwidth]++;
             break;
         case SENDER_LIMITED: {
 
@@ -181,8 +239,6 @@ void Analyzer::onNewRoundtrip(Timestamp now,
             auto diff3 = static_cast<uint32_t>(std::abs(currFlightSize - prevFlightSize3_));
             bool allZero = (diff1 == 0 && diff2 == 0 && diff3 == 0);
 
-
-
             if (currFlightSize > static_cast<int32_t>(mss()) &&
                 (prevSmallUnitCount_ == 0 ||
                  smallUnitCount_ == 0 ||
@@ -190,18 +246,26 @@ void Analyzer::onNewRoundtrip(Timestamp now,
             {
                 if (allZero) {
                     std::cout << "(buffer)";
+                    duration_per_limit[kSendBuffer] += duration;
+                    bytes_per_limit[kSendBuffer] += currFlightSize;
+                    flight_per_limit[kSendBuffer]++;
                 }
                 else {
                     std::cout << "(cc)";
+                    duration_per_limit[kCongestionControl] += duration;
+                    bytes_per_limit[kCongestionControl] += currFlightSize;
+                    flight_per_limit[kCongestionControl]++;
                 }
                 std::cout << "[kernel limited]"
                           << " (" << votes_[ret] << "/" << total << ")"
                           << "\n";
-            }
-            else {
+            } else {
                 std::cout << "[application limited]"
                           << " (" << votes_[ret] << "/" << total << ")"
                           << "\n";
+                duration_per_limit[kApplication] += duration;
+                bytes_per_limit[kApplication] += currFlightSize;
+                flight_per_limit[kApplication]++;
             }
         }
             break;
@@ -210,6 +274,9 @@ void Analyzer::onNewRoundtrip(Timestamp now,
                     << "[receiver limited]"
                     << " (" << votes_[ret] << "/" << total << ")"
                     << "\n";
+            duration_per_limit[kReceiveWindow] += duration;
+            bytes_per_limit[kReceiveWindow] += currFlightSize;
+            flight_per_limit[kReceiveWindow]++;
 
             break;
         case CONGESTION_LIMITED:
@@ -217,7 +284,9 @@ void Analyzer::onNewRoundtrip(Timestamp now,
                     << "[congestion limited]"
                     << " (" << votes_[ret] << "/" << total << ")"
                     << "\n";
-
+            duration_per_limit[kCongestion] += duration;
+            bytes_per_limit[kCongestion] += currFlightSize;
+            flight_per_limit[kCongestion]++;
             break;
         default:
             std::cout
@@ -226,6 +295,11 @@ void Analyzer::onNewRoundtrip(Timestamp now,
                     << "\n";
             break;
     }
+    AfterRoundTrip(currFlightSize);
+}
+
+void Analyzer::AfterRoundTrip(int32_t currFlightSize)
+{
     std::fill(votes_.begin(), votes_.end(), 0);
     prevSmallUnitCount_ = smallUnitCount_;
     smallUnitCount_ = 0;
@@ -254,11 +328,11 @@ void Analyzer::onQuitSlowStart(Timestamp when)
 {
     isSlowStart_ = false;
     slowStartQuitTime = when;
-    std::cout << "[" << roundtripCount() << "]"
-              << " " << bandwidthFilter_.GetBest() << "kB/s"
-              << " " << rtprop_ << "us "
-              << extractHours(when)
-              << " [quit slow start]" << "\n";
+//    std::cout << "[" << roundtripCount() << "]"
+//              << " " << bandwidthFilter_.GetBest() << "kB/s"
+//              << " " << rtprop_ << "us "
+//              << extractHours(when)
+//              << " [quit slow start]" << "\n";
 }
 
 Result Analyzer::countVotes()

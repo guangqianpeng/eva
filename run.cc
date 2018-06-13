@@ -104,4 +104,8 @@ int main(int argc, char** argv)
             }
         }
     }
+
+    for (auto& p: flowMap) {
+        delete p.second;
+    }
 }
